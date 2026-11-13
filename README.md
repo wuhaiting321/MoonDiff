@@ -1,5 +1,7 @@
 # MoonDiff
 
+[![MoonDiff CI](https://github.com/wuhaiting321/MoonDiff/actions/workflows/ci.yml/badge.svg)](https://github.com/wuhaiting321/MoonDiff/actions/workflows/ci.yml)
+
 > 四后端一致性差分验证框架 · 让「都通过了」变成「算得一样」
 
 ## 基本信息

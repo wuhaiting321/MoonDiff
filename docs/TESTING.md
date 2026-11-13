@@ -35,6 +35,28 @@ Total tests: 31, passed: 31, failed: 0
 后端覆盖：本机 `wasm` / `wasm-gc` / `js`；`native` 由 CI（`ubuntu-latest`）覆盖，
 CI 中显式断言 native 产出完整的 24 条折叠结果，避免「未运行也算通过」。
 
+### CI 实测结果（2026-11-13，run #2）
+
+四个后端**全部真实执行**，不是挑选后的结果：
+
+```
+unit tests / wasm        Total tests: 31, passed: 31, failed: 0
+unit tests / wasm-gc     Total tests: 31, passed: 31, failed: 0
+unit tests / js          Total tests: 31, passed: 31, failed: 0
+unit tests / native      Total tests: 31, passed: 31, failed: 0
+
+自检通过：stats / matrix / shrink / gen 在 wasm wasm-gc js native 上输出逐字节一致
+回归通过：11 项判定与基线一致（后端: wasm wasm-gc js）
+四后端覆盖普查通过：8 个探针均在 wasm / wasm-gc / js / native 上完成比较
+折叠电池：wasm 24 / wasm-gc 24 / js 24 / native 24
+```
+
+> 顺带记录一个真实教训：CI 首次运行失败在 census 一步，日志只有「零输出 + 退出码 2」。
+> 根因是 `scripts/matrix.sh` 曾以 CRLF 入库，Linux 上 bash 读它直接语法错误，
+> 而错误信息被 `out=$(...)` 吞掉。Windows 的 Git Bash 容忍 CRLF，本地永远复现不出来。
+> 修法是 `.gitattributes` 钉死 `eol=lf`，并把这段逻辑移进脚本改为 `tee` 输出。
+> 这类「只在另一个平台上才现形」的故障，正是本项目要对付的东西。
+
 覆盖的断言点（节选）：
 
 - `hex16(-1L) == "ffffffffffffffff"`：位串必须是补码，不能是符号加绝对值

@@ -10,7 +10,8 @@
 2. **先补一条 native 结果**（可选但推荐）。本机是 Windows，缺 MSVC Build Tools，
    `native` 没跑。若手边有 Linux/macOS 机器或 WSL，把
    `moon run main --target native` 的输出补进 Environment 一节即可，其余内容不要改。
-3. **正文里的输出来自实测**，不要改数字、步号或错误文本；如果换工具链版本复现，
+3. **正文里的输出来自实测**，不要改数字、步号或错误文本；唯一的改动是本机绝对路径
+   用 `<repo>` 代替（`wasm-gc` 的调用栈会打印源码路径）。如果换工具链版本复现，
    请把版本号一并改掉，并在正文里说明。
 4. **若上游回复「trap 是有意设计」**，不要争辩。正确做法是把 `docs/FINDINGS.md` 里这条的
    裁定从 `SPEC-VIOLATION` 改为 `UNDETERMINED`，把回复链接记在「依据」里，
@@ -80,7 +81,7 @@ RuntimeError: divide result unrepresentable
 ```
 before
 RuntimeError: divide result unrepresentable
-    at __moonbit_main main.mbt:5
+    at __moonbit_main <repo>/main/main.mbt:5
 ```
 
 In both cases `after` is never printed and the process exits with code 1:

@@ -1,0 +1,4 @@
+import {
+  "wuhaiting321/moondiff/src/core",
+  "wuhaiting321/moondiff/src/spec",
+}

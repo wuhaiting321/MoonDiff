@@ -1,0 +1,124 @@
+name: MoonDiff CI
+
+# 四后端一致性是这个项目的核心主张，所以它必须在 CI 里被证明，
+# 而不是只在某一台开发机上被声明。
+#
+# Linux runner 上 native 后端只需要 gcc（Windows runner 才需要 MSVC），
+# 因此这里用 ubuntu-latest 覆盖 wasm / wasm-gc / js / native 四个后端。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit tests / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [wasm, wasm-gc, js, native]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Toolchain versions
+        run: |
+          moon version --all
+          node --version
+          cc --version | head -1
+
+      - name: Type check
+        run: moon check
+
+      - name: Unit tests
+        run: moon test --target ${{ matrix.target }}
+
+  differential:
+    name: cross-backend differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Toolchain versions
+        run: |
+          moon version --all
+          node --version
+          cc --version | head -1
+
+      # 守则 1：工具自身必须在四个后端上给出逐字节相同的报告。
+      - name: Tool self-consistency on all four backends
+        run: bash scripts/selfcheck.sh
+
+      # 守则 4：已知差异入基线，只对新增报警。
+      # 基线自带 `# backends:` 声明，用录制时的那一组后端复现。
+      - name: Regression baseline
+        run: bash scripts/regress.sh
+
+      # 守则 2：证明 native 真的参与了差分，而不是被跳过。
+      # 断言每个探针的矩阵都有 4 行、且没有 "unavailable" 标记。
+      - name: Four-backend coverage census
+        run: |
+          mkdir -p ci-out
+          fail=0
+          for n in frem-zero fdiv-zero nan-arith cast-edge i64-overflow \
+                   int-overflow str-unicode subnormal; do
+            out=$(bash scripts/matrix.sh "probe:$n" wasm wasm-gc js native 2>&1)
+            printf '%s\n' "$out" > "ci-out/census-$n.txt"
+
+            if printf '%s' "$out" | grep -q "unavailable"; then
+              echo "FAIL probe:$n —— 有后端未运行，四后端主张不成立"
+              fail=1
+            fi
+
+            rows=$(printf '%s\n' "$out" | grep -cE '^\| *(wasm|wasm-gc|js|native) +\|')
+            if [ "$rows" -ne 4 ]; then
+              echo "FAIL probe:$n —— 矩阵只有 $rows 行，应为 4 行"
+              fail=1
+            fi
+
+            printf '  %-14s ' "probe:$n"
+            printf '%s\n' "$out" | grep -E '判定' | sed 's/^ *//' || echo "(no verdict)"
+          done
+          exit $fail
+
+      # 常量折叠电池：24 条编译期表达式逐后端跑，条数是「真的执行了」的硬证据。
+      - name: Constant-folding battery on four backends
+        run: |
+          for t in wasm wasm-gc js native; do
+            moon run cmd/driver --target "$t" -- literals > "ci-out/literals-$t.txt"
+            n=$(wc -l < "ci-out/literals-$t.txt")
+            if [ "$n" -ne 24 ]; then
+              echo "FAIL $t —— 折叠电池只有 $n 行，应为 24 行"
+              exit 1
+            fi
+            echo "$t: $n probes"
+          done
+          echo "--- wasm vs native ---"
+          diff ci-out/literals-wasm.txt ci-out/literals-native.txt || true
+          echo "--- wasm vs js ---"
+          diff ci-out/literals-wasm.txt ci-out/literals-js.txt || true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moondiff-reports
+          path: ci-out/
+          if-no-files-found: warn

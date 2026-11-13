@@ -221,26 +221,6 @@ moon run cmd/moondiff --target wasm -- shrink "$PROG" 26
 python scripts/localize.py examples/min-div-overflow.json
 ```
 
-## 仓库结构
-
-```
-moon.mod                 模块元数据（零第三方依赖）
-src/core/                值模型、规范编码、转录比对
-src/spec/                程序模型、JSON 编解码
-src/exec/                参照解释器、覆盖统计
-src/gen/                 确定性随机源、生成器、变异、语料库
-src/shrink/              依赖闭包与收缩
-src/oracle/              规范裁定（违规方 / 规范值 / 依据）
-src/report/              矩阵与差异报告
-cmd/driver/              四后端共用的执行器（含常量折叠电池）
-cmd/moondiff/            CLI（gen / run / diff / matrix / shrink / stats / probe / adjudicate）
-examples/                探针与生成样例（JSON）
-scripts/                 编排、自检、回归基线、崩溃点二分
-tests/                   回归基线 expected.txt
-.github/workflows/       CI：四后端测试 + 自检 + 基线 + 矩阵
-docs/                    架构、发现、上游 issue 草稿、测试、原创性排查
-```
-
 ## 已观测到的真实差异与裁定
 
 仓库 `docs/FINDINGS.md` 记录了在本机复现的跨后端差异，均附最小复现与规范依据。

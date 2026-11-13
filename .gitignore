@@ -1,0 +1,9 @@
+_build/
+.moondiff-out/
+*.wasm
+target/
+.DS_Store
+
+# moon info 生成的接口快照。属于构建产物，不随源码演进逐层提交；
+# 需要审阅 API 时本地跑 `moon info` 即可。
+**/pkg.generated.mbti

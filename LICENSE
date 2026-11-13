@@ -1,0 +1,23 @@
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+Copyright 2026 吴海婷 (Wu Haiting)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+---
+
+本仓库完整采用 Apache License 2.0，全文见上方链接。
+依赖说明：本项目仅依赖 MoonBit 标准库 `moonbitlang/core`（Apache-2.0），
+未引入任何第三方包，也未包含任何第三方源代码。

@@ -73,30 +73,10 @@ jobs:
 
       # 守则 2：证明 native 真的参与了差分，而不是被跳过。
       # 断言每个探针的矩阵都有 4 行、且没有 "unavailable" 标记。
+      # 逻辑放在脚本里：内联时一旦失败，输出会被命令替换吞掉，
+      # 日志里只剩「零输出 + 退出码 2」，查起来极其费劲。
       - name: Four-backend coverage census
-        run: |
-          mkdir -p ci-out
-          fail=0
-          for n in frem-zero fdiv-zero nan-arith cast-edge i64-overflow \
-                   int-overflow str-unicode subnormal; do
-            out=$(bash scripts/matrix.sh "probe:$n" wasm wasm-gc js native 2>&1)
-            printf '%s\n' "$out" > "ci-out/census-$n.txt"
-
-            if printf '%s' "$out" | grep -q "unavailable"; then
-              echo "FAIL probe:$n —— 有后端未运行，四后端主张不成立"
-              fail=1
-            fi
-
-            rows=$(printf '%s\n' "$out" | grep -cE '^\| *(wasm|wasm-gc|js|native) +\|')
-            if [ "$rows" -ne 4 ]; then
-              echo "FAIL probe:$n —— 矩阵只有 $rows 行，应为 4 行"
-              fail=1
-            fi
-
-            printf '  %-14s ' "probe:$n"
-            printf '%s\n' "$out" | grep -E '判定' | sed 's/^ *//' || echo "(no verdict)"
-          done
-          exit $fail
+        run: bash scripts/census.sh
 
       # 常量折叠电池：24 条编译期表达式逐后端跑，条数是「真的执行了」的硬证据。
       - name: Constant-folding battery on four backends

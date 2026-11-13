@@ -1,5 +1,6 @@
 _build/
 .moondiff-out/
+ci-out/
 *.wasm
 target/
 .DS_Store

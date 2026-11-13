@@ -192,7 +192,7 @@ fn judge_int_div(
   }
   Some(
     Violation(
-      offenders, expected, "moonbitlang/core 文档：Int 为 32 位整数，采用二补数运算，溢出按回绕处理（示例 2147483647 + 1 == -2147483648）。同一规则下 INT_MIN / -1 的规范结果应为 INT_MIN 本身，而非终止进程。",
+      offenders, expected, "moonbitlang/core 文档：Int 为 32 位整数，采用二补数运算，溢出按回绕处理（示例 2147483647 + 1 == -2147483648）；`Div` 条目只规定除数为 0 时 panic，未单独规定商不可表示的情形，故本条依据的是 Int 的定宽二补数溢出语义。同一规则下 INT_MIN / -1 的规范结果应为 INT_MIN 本身，而非终止进程。",
     ),
   )
 }
@@ -365,8 +365,63 @@ pub fn adjudicate(
 }
 
 ///|
+/// 按显示宽度折行：ASCII 记 1 列，其余字符记 2 列。
+///
+/// 只用于裁定的说明文字，不用于转录。转录必须逐字节确定，
+/// 折行会让「同一步的比较」失去意义；说明文字给人看，折行才有价值。
+/// 断点优先落在空格或中文标点之后，避免把 `2147483647` 这类数字拆开。
+fn wrap_note(s : String, width : Int, indent : String) -> String {
+  let chars = s.to_array()
+  let n = chars.length()
+  let mut out = ""
+  let mut i = 0
+  let mut first = true
+  while i < n {
+    if !first {
+      out = out + "\n" + indent
+    }
+    let mut col = 0
+    let mut j = i
+    let mut brk = -1
+    while j < n {
+      let c = chars[j]
+      let w = if c.to_int() < 128 { 1 } else { 2 }
+      if col + w > width && j > i {
+        break
+      }
+      col = col + w
+      if c == ' ' || c == '；' || c == '，' || c == '、' || c == '。' || c == '：' {
+        brk = j
+      }
+      j = j + 1
+    }
+    let mut end = j
+    // 断点太靠前就不采用，否则会退化成「一行一个字」。
+    if j < n && brk >= i + 2 {
+      end = brk + 1
+    }
+    // 去掉行尾空格：否则输出里会留下看不见但逐字节存在的尾随空白。
+    while end > i + 1 && chars[end - 1] == ' ' {
+      end = end - 1
+    }
+    let mut k = i
+    while k < end {
+      out = out + chars[k].to_string()
+      k = k + 1
+    }
+    i = end
+    while i < n && chars[i] == ' ' {
+      i = i + 1
+    }
+    first = false
+  }
+  out
+}
+
+///|
 /// 裁定的可读文本（纯 ASCII 之外只用中文，不含颜色转义）。
 pub fn judgment_text(j : Judgment, indent : String) -> String {
+  let cont = indent + "         "
   match j {
     Violation(offenders, expected, basis) => {
       let mut who = ""
@@ -390,7 +445,7 @@ pub fn judgment_text(j : Judgment, indent : String) -> String {
       "\n" +
       indent +
       "依据   : " +
-      basis +
+      wrap_note(basis, 68, cont) +
       "\n"
     }
     Freedom(topic, note) =>
@@ -398,18 +453,18 @@ pub fn judgment_text(j : Judgment, indent : String) -> String {
       "结论   : 实现自由度，非缺陷（Verdict: IMPLEMENTATION-FREEDOM）\n" +
       indent +
       "议题   : " +
-      topic +
+      wrap_note(topic, 68, cont) +
       "\n" +
       indent +
       "说明   : " +
-      note +
+      wrap_note(note, 68, cont) +
       "\n"
     Undetermined(reason) =>
       indent +
       "结论   : 无法判定（Verdict: UNDETERMINED）\n" +
       indent +
       "原因   : " +
-      reason +
+      wrap_note(reason, 68, cont) +
       "\n"
   }
 }

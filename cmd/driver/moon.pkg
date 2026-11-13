@@ -1,0 +1,9 @@
+import {
+  "moonbitlang/core/double",
+  "moonbitlang/core/env",
+  "wuhaiting321/moondiff/src/core",
+  "wuhaiting321/moondiff/src/spec",
+  "wuhaiting321/moondiff/src/exec",
+}
+
+pkgtype(kind: "executable")

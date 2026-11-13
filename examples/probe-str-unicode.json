@@ -1,0 +1,1 @@
+{"seed":0,"profile":"strict","ops":[["sset",0,"a\u4e2d\ud83d\ude00"],["sset",1,""],["sset",2,"\u0000x"],["slen",3,0],["slen",4,1],["slen",5,2],["scat",6,0,2],["scmp",7,0,1],["scmp",8,2,0]]}

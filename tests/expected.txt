@@ -1,0 +1,16 @@
+# MoonDiff 回归基线：每行「反例名 判定标签」。
+# backends: wasm wasm-gc js
+# 判定标签含义见 docs/FINDINGS.md；SPEC-VIOLATION = 违反语言规范。
+# 判定结果取决于后端集合，故上一行显式声明录制时的后端；复现须用同一组。
+# 改动此文件必须说明理由：静默放宽基线等于掩盖差异。
+probe:frem-zero            PASS
+probe:fdiv-zero            PASS
+probe:nan-arith            PASS
+probe:cast-edge            PASS
+probe:i64-overflow         PASS
+probe:int-overflow         SPEC-VIOLATION
+probe:str-unicode          PASS
+probe:subnormal            PASS
+example:min-div-overflow   SPEC-VIOLATION
+example:fuzz-seed7         PASS
+literals:wasm-vs-js        diff-lines=2

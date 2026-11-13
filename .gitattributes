@@ -1,0 +1,14 @@
+# 文本文件一律以 LF 入库、以 LF 检出。
+#
+# 这不是洁癖：scripts/matrix.sh 曾以 CRLF 入库，在 Linux runner 上
+# bash 直接报语法错误并返回退出码 2，而错误信息又被 `out=$(...)` 吞掉，
+# 最终表现为「零输出 + 退出码 2」，极难定位。
+# Windows 上的 Git Bash 能容忍 CRLF，所以本地始终复现不出来。
+* text=auto eol=lf
+
+# 二进制与生成物，不做换行转换
+*.wasm binary
+*.png binary
+*.jpg binary
+*.pdf binary
+*.zip binary

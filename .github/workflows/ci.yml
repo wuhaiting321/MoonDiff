@@ -83,6 +83,22 @@ jobs:
       - name: Source probes on four backends
         run: bash scripts/source-probe.sh --check --require-all
 
+      # 收缩后复跑：把「不需要重跑」这句承诺换成一次真实的再执行。
+      # 正例必须 verified；反例把目标步钉在 0（trap 会被收缩掉）必须被拒。
+      # 反例是这条断言的价值所在：没有它，verified 也可能只是一句常量。
+      - name: Shrink then re-execute (promise -> fact)
+        run: |
+          mkdir -p ci-out
+          bash scripts/shrink.sh examples/min-div-overflow.json | tee ci-out/shrink-verified.log
+          grep -q "^验证结果 : verified: reproduce$" ci-out/shrink-verified.log
+          if bash scripts/shrink.sh examples/min-div-overflow.json 0 > ci-out/shrink-negative.log 2>&1; then
+            echo "FAIL —— 负例不该被判为复现"
+            cat ci-out/shrink-negative.log
+            exit 1
+          fi
+          grep -q "^验证结果 : NOT-REPRODUCED$" ci-out/shrink-negative.log
+          echo "negative case correctly rejected: $(grep '^  原因' ci-out/shrink-negative.log)"
+
       # 常量折叠电池：24 条编译期表达式逐后端跑，条数是「真的执行了」的硬证据。
       - name: Constant-folding battery on four backends
         run: |

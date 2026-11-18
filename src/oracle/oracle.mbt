@@ -514,23 +514,37 @@ pub fn find_static_site(p : @spec.Program) -> Int32? {
 ///
 /// 不能只看第一个候选：像 `int-overflow` 那样程序里先有乘法溢出、
 /// 后面才是除法终止，第一个候选往往拿不到结论，必须继续往后找。
-fn judge_static(
+pub fn find_judged_site(
   p : @spec.Program,
   names : Array[String],
   traces : Array[Array[String]],
   aborted : Array[Bool],
-) -> Judgment? {
+) -> Int32? {
   let mut i = 0
   while i < p.ops.length() {
     if is_static_candidate(p, i) {
       match judge_step(p, i, names, traces, aborted) {
-        Some(j) => return Some(j)
+        Some(_) => return Some(i)
         None => ()
       }
     }
     i = i + 1
   }
   None
+}
+
+///|
+/// 静态定位 + 裁定：给出「裁定所指那一条指令」的判定。
+fn judge_static(
+  p : @spec.Program,
+  names : Array[String],
+  traces : Array[Array[String]],
+  aborted : Array[Bool],
+) -> Judgment? {
+  match find_judged_site(p, names, traces, aborted) {
+    Some(s) => judge_step(p, s, names, traces, aborted)
+    None => None
+  }
 }
 
 ///|

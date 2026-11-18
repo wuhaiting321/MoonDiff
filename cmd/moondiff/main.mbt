@@ -13,8 +13,8 @@
 /// 所有子命令。
 fn commands() -> Array[String] {
   [
-    "gen", "gencorpus", "run", "diff", "matrix", "shrink", "stats", "probe", "adjudicate",
-    "literal", "version", "help",
+    "gen", "gencorpus", "run", "diff", "matrix", "shrink", "verify", "stats", "probe",
+    "adjudicate", "literal", "version", "help",
   ]
 }
 
@@ -146,7 +146,9 @@ fn help_text() -> String {
   out = out +
     "  moondiff matrix [@<program-json>] <name=text>...  多后端矩阵（带程序时附规范裁定）\n"
   out = out +
-    "  moondiff shrink <program-json> <step>        收缩到分歧依赖锥\n"
+    "  moondiff shrink <program-json> <step|auto> [name=trace]...  收缩到分歧依赖锥\n"
+  out = out +
+    "  moondiff verify <name=trace>... -- <name=trace>...          收缩前后现场比对，判复现\n"
   out = out +
     "  moondiff stats <program-json>                指令分布统计\n"
   out = out +
@@ -298,9 +300,17 @@ fn main {
     }
   } else if cmd == "shrink" {
     let text = if params.length() > 0 { params[0] } else { "" }
-    let step = to_int(if params.length() > 1 { params[1] } else { "0" }, 0)
+    let step_arg = if params.length() > 1 { params[1] } else { "0" }
     match @spec.decode_program(text) {
       Some(p) => {
+        // `auto` 时用现场自己定位目标步：调用方（scripts/shrink.sh）不必先
+        // 解析矩阵文本再猜步号，也就少了一处会与判定逻辑走岔的地方。
+        let (step, how) = if step_arg == "auto" {
+          let (names, traces) = collect_traces(params, 2)
+          resolve_target(p, names, traces)
+        } else {
+          (to_int(step_arg, 0), "调用方指定")
+        }
         let small = @shrink.shrink(p, step)
         let st = @shrink.shrink_stats(p, small)
         println(
@@ -310,7 +320,9 @@ fn main {
           st.after.to_string() +
           " 条（依赖锥第 " +
           step.to_string() +
-          " 步）",
+          " 步：" +
+          how +
+          "）",
         )
         println(@shrink.render_pseudo(small))
         println("// 压缩后程序：")
@@ -318,6 +330,8 @@ fn main {
       }
       None => println("!E parse")
     }
+  } else if cmd == "verify" {
+    verify_command(params)
   } else if cmd == "stats" {
     let text = if params.length() > 0 { params[0] } else { "" }
     match @spec.decode_program(text) {

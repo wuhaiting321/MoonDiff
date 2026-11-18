@@ -71,12 +71,19 @@ unit tests / native      Total tests: 31, passed: 31, failed: 0
 - 依赖闭包包含全部前驱、不包含死写入
 - `parse_hex16` 与 `hex16` 互为逆运算；长度不足或非法字符返回 `None`
 - `nan_sign_only`：正负 quiet NaN 判为真，尾数不同的 NaN 判为假
-- `INT_MIN / -1` 裁定为 `SPEC-VIOLATION`，且违规方只含终止的后端
-- `INT_MIN % -1` 的规范值是 `i0`
-- 普通除法（如 `-7 / 2`）不触发溢出裁定，落为 `UNDETERMINED`
-- 正负 NaN 差异裁定为 `FREEDOM:nan-sign`，不是违规
-- 仅格式化文本不同裁定为 `FREEDOM:float-format`
-- `find_static_violation` 能在程序深处（第 5 步）定位溢出点
+- `Source` 拒绝空白文档 / 空白定位 / 空白原文 / 含换行的文档名
+- `INT_MIN / -1` 裁定为 `UNSPECIFIED-DIVERGENCE:int-div-overflow`，
+  分歧列为 `wasm=ABORT`、`js=i-2147483648`，出处 `builtin/intrinsics.mbt:298-309`
+- `INT_MIN % -1` 同属 `UNSPECIFIED-DIVERGENCE`
+- 加法溢出且某后端不回绕：`SPEC-VIOLATION:int-wrap`，出处 `234-246`
+- 减法下溢：出处 `249-251`（条款不同，引用必须跟着换）
+- 未溢出的加法（`2147483646 + 1`）不套用回绕条款，落 `UNDETERMINED`
+- **终止的后端不被算作更早一步的违规方**（回归：曾把 IMul 那一步判错）
+- 正负 NaN 差异裁定为 `FREEDOM:nan-sign`，出处为 wasm 规范的 `NaN propagation`
+- 仅文本写法不同裁定为 `UNSPECIFIED-DIVERGENCE:float-format`，
+  出处 `builtin/double.mbt:274-296`
+- 裁定文本同时含定位（`文件:行号`）与原文
+- `find_static_site` 能在程序深处（第 5 步）定位溢出点，也认得乘法溢出
 
 ## 语义口径（本项目显式定义的部分）
 

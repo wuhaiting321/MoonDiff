@@ -14,7 +14,7 @@
    用 `<repo>` 代替（`wasm-gc` 的调用栈会打印源码路径）。如果换工具链版本复现，
    请把版本号一并改掉，并在正文里说明。
 4. **若上游回复「trap 是有意设计」**，不要争辩。正确做法是把 `docs/FINDINGS.md` 里这条的
-   裁定从 `SPEC-VIOLATION` 改为 `UNDETERMINED`，把回复链接记在「依据」里，
+   结论补上「上游确认为有意设计」，把回复链接记在「依据」里，
    并说明「本工具不代替上游定义语义」。裁定的价值在于可被证据推翻，不在于永远正确。
 5. 这条 issue 的目标是**让语义变明确**（写进文档或对齐后端），不是要求对方立刻改实现。
 
@@ -23,7 +23,7 @@
 ## Title
 
 ```
-[wasm/wasm-gc] Int and Int64 division overflow (min_value / -1) aborts instead of wrapping
+Int/Int64 division overflow (min_value / -1): wasm backends abort, js wraps, docs silent
 ```
 
 ## Body
@@ -39,10 +39,11 @@ RuntimeError: divide result unrepresentable
 On `js`, the same expression evaluates to `-2147483648` and execution continues normally.
 The same divergence exists for `Int64`.
 
-`moonbitlang/core` documents `Int` as a 32-bit two's-complement type whose operations wrap
-around on overflow, so the two wasm backends appear to diverge from that documented behaviour.
-If trapping is the intended semantics instead, then the behaviour is currently undocumented
-and inconsistent across backends — either way it would be worth pinning down.
+`moonbitlang/core` documents `Int` as a 32-bit two's-complement type, and the `Add` / `Sub` /
+`Mul` entries explicitly state that results wrap around on overflow. The `Div` entry only
+documents truncation and the divisor-is-zero panic; it does not say what happens when the
+quotient itself is not representable. So the behaviour differs across backends and the
+documentation does not currently decide which one is correct.
 
 ### Environment
 
@@ -117,14 +118,17 @@ The same holds for `Int64` (`-9223372036854775807L - 1L` divided by `-1L`):
 
 From `core/builtin/intrinsics.mbt`:
 
-- `Add for Int32`: "Performs two's complement arithmetic, which means the operation will
-  wrap around if the result exceeds the range of a 32-bit integer." The doc example is
-  `2147483647 + 1 == -2147483648`.
-- `Div for Int32`: documents truncation towards zero and "Throws a panic if `divisor` is zero".
-  It does not say what happens when the quotient itself is not representable.
+- `Add for Int32` (lines 234-246): "Returns a new integer that is the sum of the two operands.
+  If the mathematical sum exceeds the range of a 32-bit integer (-2,147,483,648 to
+  2,147,483,647), the result wraps around according to two's complement rules." The doc example
+  is `2147483647 + 1 == -2147483648`. `Sub` and `Mul` state the same rule in their own entries.
+- `Div for Int32` (lines 298-309): documents truncation towards zero and "Throws a panic if
+  `divisor` is zero". It does not say what happens when the quotient itself is not representable.
+- `Mod for Int32` (lines 322-344): "If `other` is 0, the behavior is undefined" — also silent on
+  `min_value % -1`.
 
-So the wrapping rule is stated for arithmetic in general and demonstrated for addition,
-but the division doc comment only covers the divisor-is-zero case.
+So wrapping is stated and demonstrated for `+`, `-`, `*`, but the division and remainder entries
+only cover the divisor-is-zero case.
 
 ### Expected behaviour
 

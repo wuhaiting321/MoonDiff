@@ -79,7 +79,7 @@ if [ "$UPDATE" = "1" ]; then
   {
     echo "# MoonDiff 回归基线：每行「反例名 判定标签」。"
     echo "# backends: ${AVAILABLE[*]}"
-    echo "# 判定标签含义见 docs/FINDINGS.md；SPEC-VIOLATION = 违反语言规范。"
+    echo "# 判定标签含义见 docs/FINDINGS.md；四档：SPEC-VIOLATION / FREEDOM / UNSPECIFIED-DIVERGENCE / UNDETERMINED。"
     echo "# 判定结果取决于后端集合，故上一行显式声明录制时的后端；复现须用同一组。"
     echo "# 改动此文件必须说明理由：静默放宽基线等于掩盖差异。"
     cat "$NOW"

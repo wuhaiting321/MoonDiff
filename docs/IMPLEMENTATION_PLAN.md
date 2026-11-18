@@ -60,19 +60,22 @@
 
 把结论从「两边不一样」推进到「哪边违反规范」。
 
-- [x] `src/oracle`：三级判定 `Violation` / `Freedom` / `Undetermined`
-- [x] `INT_MIN / -1` 的规范值判定（依据 core 文档的回绕语义）
-- [x] NaN 符号位的自由度判定（依据 IEEE 754-2019 §6.2.3）
-- [x] 浮点格式化的自由度判定
-- [x] `find_static_violation`：trap 导致转录丢失时，静态定位真正的溢出点
+- [x] `src/oracle`：四档判定 `Violation` / `Freedom` / `Unspecified` / `Undetermined`
+- [x] 出处进类型：`Source`（文档 / 定位 / 原文）字段私有且拒绝空值，是 `Violation` 的必填参数
+- [x] 溢出回绕的违规判定（依据 core 的 `Add` / `Sub` / `Mul` 条目，有明文）
+- [x] `INT_MIN / -1` 的**无条款不一致**判定（`Div` 条目只写了除零 panic，不判违规方）
+- [x] NaN 符号位的自由度判定（依据 wasm 规范的 NaN propagation 条款）
+- [x] 浮点文本写法的无条款不一致判定（`Double::to_string` 未规定格式）
+- [x] `find_static_site`：trap 导致转录丢失时，静态逐点定位候选溢出点
 - [x] `moondiff matrix @<prog>` 与 `moondiff adjudicate` 命令
-- 完成标准：`moondiff matrix` 输出末段给出违规方、规范值、依据
+- 完成标准：`moondiff matrix` 输出末段给出结论、分歧/违规方、出处与原文
 
 ## 阶段 10 · 工具自举与回归基线（已完成）
 
 - [x] `scripts/selfcheck.sh`：`stats`/`matrix`/`shrink`/`gen` 在四后端上字节一致
 - [x] `scripts/regress.sh`：与 `tests/expected.txt` 比对，只对新增差异报警
-- [x] `tests/expected.txt`：11 项已知判定入基线（含 2 项 `SPEC-VIOLATION`）
+- [x] `tests/expected.txt`：11 项已知判定入基线（`min/-1` 与 `int-overflow`
+      均为 `UNSPECIFIED-DIVERGENCE`：无条款支撑，不判违规）
 - [x] trap 时矩阵的 `step` 改显示 `?`，不再误报「第 0 步不同」
 - 完成标准：`regress.sh` 退出码 0；新增差异时退出码 1
 

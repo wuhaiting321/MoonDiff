@@ -1,0 +1,11 @@
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/double",
+  "moonbitlang/core/encoding/ascii",
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/encoding/hex",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+}
+
+pkgtype(kind: "executable")

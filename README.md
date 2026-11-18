@@ -118,6 +118,10 @@ MoonDiff 直接给出结论，而不是把差异摆出来让人自己查规范�
 
 ## 拟实现的核心功能
 
+- **源码探针（零 DSL 接入）**：探针就是普通 MoonBit 源码，直接 `import` 真实包、调用真实函数、
+  打印规范形式结果；工具在多后端执行同一份源码并逐字节比对 stdout。`probes/moon.pkg` 不依赖
+  本项目任何包，因此「不写指令语言也能用」是可验证的。首批 30 个探针覆盖 `BigInt`、`Double`、
+  `String` 与 UTF-8 / ASCII / Base64 编码，状态分 `PASS` / `DIVERGENT` / `ABORT` / `unavailable`。
 - **规格程序模型**：寄存器化直线程序，覆盖 54 条原语
   （32 位整数、64 位整数、双精度浮点、六种转换、字符串、数组），
   每条指令对应一个明确的核心库操作。
@@ -200,6 +204,9 @@ bash scripts/matrix.sh examples/min-div-overflow.json   # 同一缺陷的 3 条�
 
 # 3. 回归基线：已知差异在册，只对新增差异报警
 bash scripts/regress.sh
+
+# 4. 源码探针：普通 MoonBit 直接调用真实包，四后端逐字节比对
+bash scripts/source-probe.sh
 ```
 
 `scripts/matrix.sh` 的输出包含三段：多后端矩阵（谁和谁不一样）、差异归因
@@ -220,6 +227,51 @@ moon run cmd/moondiff --target wasm -- shrink "$PROG" 26
 # 终止性差异（trap）的精确步号：前缀二分
 python scripts/localize.py examples/min-div-overflow.json
 ```
+
+## 源码探针：不写 DSL 也能用
+
+规格程序不是唯一入口。`probes/` 是一组**普通的 MoonBit 源码**：直接 `import` 真实包、
+调用真实函数、`println` 结果，工具只负责在多个后端执行并逐字节比对 stdout。
+
+```moonbit
+fn case_bigint_mul() -> Unit {
+  let a = @bigint.BigInt::from_string("123456789012345678901234567890")
+  let b = @bigint.BigInt::from_string("-987654321098765432109876543210")
+  emit("bigint-mul", (a * b).to_string())
+}
+```
+
+`probes/moon.pkg` 里 **没有** `wuhaiting321/moondiff`——探针不依赖本项目的任何代码。
+这条是硬约束，也是「它对你真的可用」的唯一证据。
+
+一条命令得到矩阵：
+
+```
++----------------------------+-----------+-----------+-----------+-----------+
+| case                       | wasm      | wasm-gc   | js        | native    |
++----------------------------+-----------+-----------+-----------+-----------+
+| bigint-mul                 | PASS      | PASS      | PASS      | PASS      |
+| double-nan-literal         | PASS      | PASS      | DIVERGENT | PASS      |
+| string-length              | PASS      | PASS      | PASS      | PASS      |
++----------------------------+-----------+-----------+-----------+-----------+
+```
+
+状态只有四种：`PASS`（逐字节一致）、`DIVERGENT`（存在差异）、`ABORT`（某后端在途中终止）、
+`unavailable`（该后端缺工具链，**不冒充 PASS**）。
+
+**接入你自己的包，三步**：
+
+1. 在 `probes/moon.pkg` 的 `import` 里加上你的包；
+2. 在 `probes/main.mbt` 的 `match` 里加一个分支，调用你的函数并用 `emit` 打印；
+3. 跑 `bash scripts/source-probe.sh --update` 记录基线，之后 `--check` 只对新增差异报警。
+
+源码探针与 `moon test` 的分工要说清：`moon test` 在**每个后端上独立判断通过与否**，
+从不比较后端之间；源码探针比的是**同一份输出在多个后端上是否逐字节相同**。
+两者不是替代关系——测试通过但输出不同，正是本工具要暴露的那一类问题。
+
+源码探针只报「不一致」，不做裁定；`SPEC-VIOLATION` / `UNSPECIFIED-DIVERGENCE` /
+`IMPLEMENTATION-FREEDOM` 这些判定由规格程序模式给出。已知的 `DIVERGENT` 在
+`tests/source-expected.txt` 里入册，裁定见 `docs/FINDINGS.md`。
 
 ## 已观测到的真实差异与裁定
 

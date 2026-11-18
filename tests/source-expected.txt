@@ -1,0 +1,34 @@
+# 源码探针基线：每行「case 状态」。
+# 状态语义：PASS = 各后端逐字节一致；DIVERGENT = 存在跨后端差异；ABORT = 某后端在途中终止。
+# 后端集合: wasm wasm-gc js
+# 改动此文件必须说明理由：静默放宽基线等于掩盖差异。
+bigint-mul                   PASS
+bigint-add-sub               PASS
+bigint-div-trunc             PASS
+bigint-mod-sign              PASS
+bigint-pow                   PASS
+bigint-pow-mod               PASS
+bigint-radix                 PASS
+bigint-shift                 PASS
+bigint-bits                  PASS
+bigint-octets                PASS
+double-thirds                PASS
+double-fmt-big               PASS
+double-fmt-small             PASS
+double-round-trip            PASS
+double-subnormal             PASS
+double-rounding              PASS
+double-overflow              PASS
+double-nan-literal           DIVERGENT
+double-nan-runtime           PASS
+double-to-int                PASS
+string-emoji                 PASS
+string-cjk                   PASS
+string-length                PASS
+string-substring             PASS
+string-char-at               PASS
+string-utf8                  PASS
+string-utf8-round-trip       PASS
+string-ascii-round-trip      PASS
+string-compare               PASS
+base64-round-trip            PASS

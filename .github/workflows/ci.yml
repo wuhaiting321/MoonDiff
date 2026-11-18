@@ -78,6 +78,11 @@ jobs:
       - name: Four-backend coverage census
         run: bash scripts/census.sh
 
+      # 源码探针：探针包只 import moonbitlang/core，不依赖本项目。
+      # CI 必须四列齐全——本机缺 MSVC 时 native 标 unavailable，这里不允许。
+      - name: Source probes on four backends
+        run: bash scripts/source-probe.sh --check --require-all
+
       # 常量折叠电池：24 条编译期表达式逐后端跑，条数是「真的执行了」的硬证据。
       - name: Constant-folding battery on four backends
         run: |

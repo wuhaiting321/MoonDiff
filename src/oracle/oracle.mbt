@@ -1,23 +1,175 @@
-// 规范裁定：把「两边不一样」升级为「哪边违反了规范」。
+// 规范裁定：把「两边不一样」升级为「哪边违反了规范、依据在哪一行」。
 //
 // 差分测试最常见的失败模式是只报告「不一致」，却答不出谁错了。
-// 一旦有可引用的语言规范，结论就能从「有差异」推进到「某后端违反语义」。
-// 本包只做这一件事：给定程序、步号与各后端的实际结果，给出裁定。
+// 但「谁错了」这句话只有在能引出规范原文时才成立。所以本包把出处做成类型的
+// 一部分：`Source` 只能由 `Source::new` 构造，它拒绝空文档、空定位、空原文；
+// 而 `Violation` 的最后一个参数就是 `Source`。于是「没有出处的违规裁定」
+// 在编译期就写不出来，不靠写代码时的自觉。
 //
-// 裁定的三个档位对应三种真实情况，不能混为一谈：
-//   Violation   —— 有后端违反可引用的规范，是缺陷，应当修；
-//   Freedom     —— 规范未作规定，属实现自由度，不是缺陷，但需在序列化等场景注意；
-//   Undetermined—— 缺规范依据或缺操作数，明确承认「判不了」，而不是猜。
+// 四档裁定对应四种真实情况，不能混为一谈：
+//   Violation   —— 有条款要求某个值，某后端给了别的值：缺陷，应当修；
+//   Freedom     —— 有条款明文把选择权留给实现（如 wasm 规范的 NaN 符号位）：不是缺陷；
+//   Unspecified —— 查过最接近的条款，其中没有规定，各方都能自圆其说：需上游补规范；
+//   Undetermined—— 没有匹配到检测规则，或缺操作数：明确承认「判不了」，而不是猜。
+
+///|
+/// 一条可核查的规范出处。
+///
+/// 字段全部私有，只能由 `Source::new` 构造，而它拒绝空白内容——
+/// 这是「没有出处不许下结论」的第一道闸门，第二道是 `Violation` 的参数类型。
+pub struct Source {
+  doc : String
+  at : String
+  quote : String
+}
+
+///|
+/// 字符串是否只有空白字符。
+fn is_blank(s : String) -> Bool {
+  let mut i = 0
+  while i < s.length() {
+    match s.get_char(i) {
+      Some(c) =>
+        if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+          return false
+        }
+      None => ()
+    }
+    i = i + 1
+  }
+  true
+}
+
+///|
+/// 构造一条出处。任何一项为空白、或 `doc` 含换行（会破坏报告的行结构）
+/// 都返回 `None`。
+pub fn Source::new(doc : String, at : String, quote : String) -> Source? {
+  if is_blank(doc) || is_blank(at) || is_blank(quote) {
+    return None
+  }
+  let mut i = 0
+  while i < doc.length() {
+    match doc.get_char(i) {
+      Some(c) =>
+        if c == '\n' || c == '\r' {
+          return None
+        }
+      None => ()
+    }
+    i = i + 1
+  }
+  Some({ doc: doc, at: at, quote: quote })
+}
+
+///|
+/// 出处的单行写法：`文件:行号` 或 `文档:章节`。
+pub fn Source::render(self : Source) -> String {
+  self.doc + ":" + self.at
+}
+
+///|
+/// 本项目会做裁定的议题。
+///
+/// 用枚举而不是字符串：标签由枚举决定，改说明文字不会让回归基线的标签漂移。
+pub enum Finding {
+  IntWrap
+  IntDivOverflow
+  NanSign
+  FloatFormat
+}
+
+///|
+/// 议题的稳定标识，用于一行式标签。
+fn Finding::slug(self : Finding) -> String {
+  match self {
+    IntWrap => "int-wrap"
+    IntDivOverflow => "int-div-overflow"
+    NanSign => "nan-sign"
+    FloatFormat => "float-format"
+  }
+}
+
+///|
+/// 议题的人类可读名字。
+fn Finding::label(self : Finding) -> String {
+  match self {
+    IntWrap => "32 位整数加/减/乘的溢出回绕"
+    IntDivOverflow => "整数除法/取模的商（余数）不可表示：min_value / -1"
+    NanSign => "NaN 的符号位"
+    FloatFormat => "浮点数的文本写法"
+  }
+}
 
 ///|
 /// 一处分歧的裁定结果。
-pub(all) enum Judgment {
-  /// 有后端违反可引用的规范。`offenders` 为违规方，`expected` 为规范值。
-  Violation(Array[String], String, String)
-  /// 规范未规定，属实现自由度。不算缺陷。
-  Freedom(String, String)
-  /// 判不了：缺规范依据或缺少操作数信息。明确承认，而不是猜测。
+///
+/// 四个档位各自的含义见文件头注释。`Unspecified` 与 `Freedom` 的区别在于
+/// 「条款说了什么」：前者是条款没写，后者是条款写明由实现自选。
+pub enum Judgment {
+  Violation(Finding, Array[String], String, Source)
+  Freedom(Finding, String, Source)
+  Unspecified(Finding, Array[String], String, Source)
   Undetermined(String)
+}
+
+///|
+/// 32 位二补数截断。
+///
+/// 先用 Int64 算完再手工取低 32 位，**不依赖 Int 自身的回绕行为**——
+/// 否则就是拿被测的语义给被测对象出期望值，结论会自证。
+fn wrap32(x : Int64) -> Int32 {
+  let low = x & 0xFFFFFFFFL
+  if low >= 0x80000000L {
+    (low - 0x100000000L).to_int()
+  } else {
+    low.to_int()
+  }
+}
+
+///|
+/// `iadd` / `isub` / `imul` 在操作数为常量且**确实溢出**时的规范值。
+///
+/// 未溢出（此时回绕条款不适用）、或不是这三条原语，返回 `None`。
+fn wrap_expected(kn : String, x : Int32, y : Int32) -> String? {
+  let wide = if kn == "iadd" {
+    x.to_int64() + y.to_int64()
+  } else if kn == "isub" {
+    x.to_int64() - y.to_int64()
+  } else if kn == "imul" {
+    x.to_int64() * y.to_int64()
+  } else {
+    return None
+  }
+  if wide >= -2147483648L && wide <= 2147483647L {
+    return None
+  }
+  Some("i" + wrap32(wide).to_string())
+}
+
+///|
+/// 回绕条款的出处：加、减、乘各有自己的条目，引用各自那一行。
+fn wrap_source(kn : String) -> Source? {
+  if kn == "iadd" {
+    Source::new(
+      "builtin/intrinsics.mbt",
+      "234-246",
+      "Returns a new integer that is the sum of the two operands. If the mathematical sum exceeds the range of a 32-bit integer (-2,147,483,648 to 2,147,483,647), the result wraps around according to two's complement rules.",
+    )
+  } else if kn == "isub" {
+    Source::new(
+      "builtin/intrinsics.mbt",
+      "249-251",
+      "Performs subtraction between two 32-bit integers, following standard two's complement arithmetic rules. When the result overflows or underflows, it wraps around within the 32-bit integer range.",
+    )
+  } else if kn == "imul" {
+    Source::new(
+      "builtin/intrinsics.mbt",
+      "282-283",
+      "Returns the product of the two integers. If the result overflows the range of `Int`, it wraps around according to two's complement arithmetic.",
+    )
+  } else {
+    None
+  }
 }
 
 ///|
@@ -142,12 +294,102 @@ fn const_before(p : @spec.Program, reg : Int32, before : Int32) -> @core.Value? 
 }
 
 ///|
-/// 32 位整数除法/取模的溢出点：`INT_MIN / -1`。
+/// 各后端在该步的取值：终止记 `ABORT`，缺行记 `?`。
 ///
-/// 这是 `i32` 除法唯一会溢出的情形（除数为 0 已由本项目规格定义为 0）。
-/// MoonBit 的 `Int` 是 32 位二补数、溢出回绕，因此规范结果应当是
-/// `-2147483648`（取模为 `0`），而不是终止进程。
-fn judge_int_div(
+/// 返回 `(值, 带后端名的值)`：前者只用于判断「有没有分歧」，
+/// 后者进报告。两者分开，才不会因为后端名字不同而被当成取值不同。
+fn readings(
+  names : Array[String],
+  results : Array[String],
+  aborted : Array[Bool],
+) -> (Array[String], Array[String]) {
+  let values : Array[String] = []
+  let labelled : Array[String] = []
+  let mut i = 0
+  while i < names.length() {
+    let v = if i < aborted.length() && aborted[i] {
+      "ABORT"
+    } else if i < results.length() && results[i] != "" {
+      canon_of(results[i])
+    } else {
+      "?"
+    }
+    values.push(v)
+    labelled.push(names[i] + "=" + v)
+    i = i + 1
+  }
+  (values, labelled)
+}
+
+///|
+/// 一组取值是否全同。
+fn all_equal(vs : Array[String]) -> Bool {
+  let mut i = 1
+  while i < vs.length() {
+    if vs[i] != vs[0] {
+      return false
+    }
+    i = i + 1
+  }
+  true
+}
+
+///|
+/// 溢出回绕：有条款要求回绕值，谁给了别的值谁违规（`Violation`）。
+fn judge_wrap(
+  p : @spec.Program,
+  step : Int32,
+  names : Array[String],
+  results : Array[String],
+  aborted : Array[Bool],
+) -> Judgment? {
+  if step < 0 || step >= p.ops.length() {
+    return None
+  }
+  let op = p.ops[step]
+  let kn = @spec.op_kind_name(op.kind)
+  let expected = match (const_before(p, op.a, step), const_before(p, op.b, step)) {
+    (Some(@core.VInt(x)), Some(@core.VInt(y))) => wrap_expected(kn, x, y)
+    _ => None
+  }
+  let expected = match expected {
+    Some(e) => e
+    None => return None
+  }
+  let offenders : Array[String] = []
+  let mut k = 0
+  while k < names.length() {
+    // 终止的后端在本步**没有取值**：它的转录被整体丢弃，可能是本步终止，
+    // 也可能是更靠后终止。没有定位就不指控，否则会把「后面才终止」算成
+    // 「本步算错了」——实测中 IMul 那一步就撞过这个坑。
+    let bad = if k < aborted.length() && aborted[k] {
+      false
+    } else if k >= results.length() || results[k] == "" {
+      false
+    } else {
+      canon_of(results[k]) != expected
+    }
+    if bad {
+      offenders.push(names[k])
+    }
+    k = k + 1
+  }
+  if offenders.length() == 0 {
+    return None
+  }
+  let src = match wrap_source(kn) {
+    Some(s) => s
+    None => return None
+  }
+  Some(Violation(IntWrap, offenders, expected, src))
+}
+
+///|
+/// `INT_MIN / -1`：四后端取值不同，但规范没有规定这种情况。
+///
+/// 只报「不一致 + 最近条款没写这一条」，不判谁违规——回绕与终止都能自圆其说，
+/// 替规范下判断就是上一版被驳回的那个问题。
+fn judge_div(
   p : @spec.Program,
   step : Int32,
   names : Array[String],
@@ -169,32 +411,29 @@ fn judge_int_div(
   if !hit {
     return None
   }
-  let expected = if kn == "idiv" { "i-2147483648" } else { "i0" }
-  let offenders : Array[String] = []
-  let mut k = 0
-  while k < names.length() {
-    // abort 场景下转录被整体丢弃，`results[k]` 是空串；
-    // 此时只把终止的后端判为违规方，不能拿空串当"值不对"去冤枉健康后端。
-    let bad = if aborted[k] {
-      true
-    } else if results[k] == "" {
-      false
-    } else {
-      canon_of(results[k]) != expected
-    }
-    if bad {
-      offenders.push(names[k])
-    }
-    k = k + 1
-  }
-  if offenders.length() == 0 {
+  let (values, labelled) = readings(names, results, aborted)
+  if all_equal(values) {
     return None
   }
-  Some(
-    Violation(
-      offenders, expected, "moonbitlang/core 文档：Int 为 32 位整数，采用二补数运算，溢出按回绕处理（示例 2147483647 + 1 == -2147483648）；`Div` 条目只规定除数为 0 时 panic，未单独规定商不可表示的情形，故本条依据的是 Int 的定宽二补数溢出语义。同一规则下 INT_MIN / -1 的规范结果应为 INT_MIN 本身，而非终止进程。",
-    ),
-  )
+  // `?` 表示既没终止也没留下取值：定位不可靠，不做归因。
+  let mut i = 0
+  while i < values.length() {
+    if values[i] == "?" {
+      return None
+    }
+    i = i + 1
+  }
+  let src = match
+    Source::new(
+      "builtin/intrinsics.mbt",
+      "298-309",
+      "Throws a panic if `divisor` is zero.",
+    ) {
+    Some(s) => s
+    None => return None
+  }
+  let gap = "该条目全文只规定「除数为 0 时 panic」，未规定商不可表示（min_value / -1）时应回绕还是终止。回绕一侧与四条算术运算的定宽二补数语义一致，终止一侧与硬件除法异常一致，两者都能自圆其说；本工具只报事实，不替规范下判断。"
+  Some(Unspecified(IntDivOverflow, labelled, gap, src))
 }
 
 ///|
@@ -216,24 +455,77 @@ fn results_at(traces : Array[Array[String]], step : Int32) -> Array[String] {
 }
 
 ///|
-/// 静态扫描：程序里第一处「可静态判定会违反规范」的位置。
+/// 该步是否命中任一检测规则。
+fn judge_step(
+  p : @spec.Program,
+  step : Int32,
+  names : Array[String],
+  traces : Array[Array[String]],
+  aborted : Array[Bool],
+) -> Judgment? {
+  let at = results_at(traces, step)
+  match judge_wrap(p, step, names, at, aborted) {
+    Some(j) => Some(j)
+    None => judge_div(p, step, names, at, aborted)
+  }
+}
+
+///|
+/// 第 `i` 步是否「可静态判定」：回绕溢出，或 `min_value / -1`。
+fn is_static_candidate(p : @spec.Program, i : Int32) -> Bool {
+  if i < 0 || i >= p.ops.length() {
+    return false
+  }
+  let op = p.ops[i]
+  let kn = @spec.op_kind_name(op.kind)
+  let x = const_before(p, op.a, i)
+  let y = const_before(p, op.b, i)
+  let wrap_hit = match (x, y) {
+    (Some(@core.VInt(a)), Some(@core.VInt(b))) => wrap_expected(kn, a, b) is Some(_)
+    _ => false
+  }
+  let div_hit = (kn == "idiv" || kn == "imod") &&
+    (match (x, y) {
+      (Some(@core.VInt(a)), Some(@core.VInt(b))) => a == -2147483648 && b == -1
+      _ => false
+    })
+  wrap_hit || div_hit
+}
+
+///|
+/// 静态扫描：程序里第一处「可静态判定」的位置。
 ///
 /// 存在的理由是终止性差异：后端 trap 时连已打印的转录都会被丢弃，
 /// 转录里的步号归零，不能作为定位依据。此时按程序结构静态找出真正的
 /// 溢出点，才能给出「第几步、哪条原语」的结论。
-pub fn find_static_violation(p : @spec.Program) -> Int32? {
+pub fn find_static_site(p : @spec.Program) -> Int32? {
   let mut i = 0
   while i < p.ops.length() {
-    let op = p.ops[i]
-    let kn = @spec.op_kind_name(op.kind)
-    if kn == "idiv" || kn == "imod" {
-      let hit = match (const_before(p, op.a, i), const_before(p, op.b, i)) {
-        (Some(@core.VInt(x)), Some(@core.VInt(y))) =>
-          x == -2147483648 && y == -1
-        _ => false
-      }
-      if hit {
-        return Some(i)
+    if is_static_candidate(p, i) {
+      return Some(i)
+    }
+    i = i + 1
+  }
+  None
+}
+
+///|
+/// 按静态候选逐个裁定，返回第一处能下结论的位置。
+///
+/// 不能只看第一个候选：像 `int-overflow` 那样程序里先有乘法溢出、
+/// 后面才是除法终止，第一个候选往往拿不到结论，必须继续往后找。
+fn judge_static(
+  p : @spec.Program,
+  names : Array[String],
+  traces : Array[Array[String]],
+  aborted : Array[Bool],
+) -> Judgment? {
+  let mut i = 0
+  while i < p.ops.length() {
+    if is_static_candidate(p, i) {
+      match judge_step(p, i, names, traces, aborted) {
+        Some(j) => return Some(j)
+        None => ()
       }
     }
     i = i + 1
@@ -266,16 +558,26 @@ fn judge_nan_sign(results : Array[String]) -> Judgment? {
     }
     j = j + 1
   }
-  Some(
-    Freedom(
-      "NaN 符号位", "IEEE 754-2019 §6.2.3 不规定 NaN 的符号位，正负 quiet NaN 都是合法结果。因此「各后端不同」本身不是缺陷；但同一表达式在不同编译路径（常量折叠 vs 运行期）给出不同位模式，会让依赖位序列化的代码（哈希、缓存键、黄金文件比对）出现平台相关行为，工程上应显式归一化。",
-    ),
-  )
+  let src = match
+    Source::new(
+      "webassembly.github.io/spec/core/exec/numerics.html",
+      "NaN propagation",
+      "When the result of a floating-point operator other than fneg, fabs, or fcopysign is a NaN, then its sign is non-deterministic and the payload is computed as follows:",
+    ) {
+    Some(s) => s
+    None => return None
+  }
+  let note = "条款明文说符号位不确定，因此「各后端不同」本身不是缺陷。但同一表达式在不同编译路径（常量折叠 vs 运行期）给出不同位模式，会让依赖位序列化的代码（哈希、缓存键、黄金文件比对）出现平台相关行为，工程上应显式归一化。"
+  Some(Freedom(NanSign, note, src))
 }
 
 ///|
 /// 数值位相同、只有格式化文本不同。
-fn judge_format(results : Array[String]) -> Judgment? {
+fn judge_float_format(
+  names : Array[String],
+  results : Array[String],
+  aborted : Array[Bool],
+) -> Judgment? {
   let canons : Array[String] = []
   let mut i = 0
   while i < results.length() {
@@ -306,11 +608,18 @@ fn judge_format(results : Array[String]) -> Judgment? {
   if !differs_text {
     return None
   }
-  Some(
-    Freedom(
-      "浮点格式化", "规范未规定浮点转字符串的具体写法（指数形式、尾随零、小数位数）。数值位模式一致时，文本差异不影响计算结果，但会让面向文本的黄金测试、日志比对失效。",
-    ),
-  )
+  let (_, labelled) = readings(names, results, aborted)
+  let src = match
+    Source::new(
+      "builtin/double.mbt",
+      "274-296",
+      "Returns a string representation of the double-precision floating-point number.",
+    ) {
+    Some(s) => s
+    None => return None
+  }
+  let gap = "该条目只承诺「返回字符串表示」，未规定指数写法（1e+21 与 1e21）、尾随零与有效位数。位模式一致时文本差异不影响计算结果，但会让面向文本的黄金文件比对、日志比对失效。"
+  Some(Unspecified(FloatFormat, labelled, gap, src))
 }
 
 ///|
@@ -319,8 +628,8 @@ fn judge_format(results : Array[String]) -> Judgment? {
 /// `results[k]` 是第 k 个后端在该步的实际转录行，缺行传空串；
 /// `aborted[k]` 表示该后端在途中终止。
 ///
-/// 判定顺序刻意固定：先查有规范依据的硬缺陷，再查实现自由度，最后落到
-/// `Undetermined`。顺序反了就会把真缺陷混进「自由度」里放过。
+/// 判定顺序刻意固定：先查有条款支撑的硬缺陷，再查「无条款的不一致」，
+/// 最后查实现自由度。顺序反了就会把真缺陷混进「自由度」里放过。
 pub fn adjudicate(
   p : @spec.Program,
   step : Int32,
@@ -335,18 +644,14 @@ pub fn adjudicate(
     }
   }
   // 先按现场步号判：正常（无终止）时步号准确，这条路径最精确。
-  match judge_int_div(p, step, names, results_at(traces, step), aborted) {
+  match judge_step(p, step, names, traces, aborted) {
     Some(j) => return j
     None => ()
   }
-  // 有后端终止时，转录被丢弃、步号归零，改用静态扫描定位真正的溢出点。
+  // 有后端终止时，转录被丢弃、步号归零，改用静态扫描逐点定位。
   if any_abort {
-    match find_static_violation(p) {
-      Some(s) =>
-        match judge_int_div(p, s, names, results_at(traces, s), aborted) {
-          Some(j) => return j
-          None => ()
-        }
+    match judge_static(p, names, traces, aborted) {
+      Some(j) => return j
       None => ()
     }
   }
@@ -355,12 +660,12 @@ pub fn adjudicate(
     Some(j) => return j
     None => ()
   }
-  match judge_format(at) {
+  match judge_float_format(names, at, aborted) {
     Some(j) => return j
     None => ()
   }
   Undetermined(
-    "缺少可引用的规范依据，或该步操作数不是常量。需要人工对照语言规范确认。",
+    "该步没有匹配到已实现的检测规则（溢出回绕 / min÷-1 / NaN 符号位 / 浮点文本），或不满足规则前提（操作数为常量）。若某后端在途中终止，确切步号需用 scripts/localize.py 二分确认；此处不下结论，也不用猜。",
   )
 }
 
@@ -419,11 +724,24 @@ fn wrap_note(s : String, width : Int, indent : String) -> String {
 }
 
 ///|
+/// 出处两行：`依据` 给出定位，`原文` 给出可逐字核对的内容。
+fn source_text(src : Source, indent : String, cont : String) -> String {
+  indent +
+  "依据   : " +
+  src.render() +
+  "\n" +
+  indent +
+  "原文   : \"" +
+  wrap_note(src.quote, 64, cont) +
+  "\"\n"
+}
+
+///|
 /// 裁定的可读文本（纯 ASCII 之外只用中文，不含颜色转义）。
 pub fn judgment_text(j : Judgment, indent : String) -> String {
   let cont = indent + "         "
   match j {
-    Violation(offenders, expected, basis) => {
+    Violation(finding, offenders, expected, src) => {
       let mut who = ""
       let mut i = 0
       while i < offenders.length() {
@@ -434,7 +752,11 @@ pub fn judgment_text(j : Judgment, indent : String) -> String {
         i = i + 1
       }
       indent +
-      "结论   : 违反语言规范（Verdict: SPEC-VIOLATION）\n" +
+      "结论   : 违反语言规范，有条款支撑（Verdict: SPEC-VIOLATION）\n" +
+      indent +
+      "议题   : " +
+      finding.label() +
+      "\n" +
       indent +
       "违规方 : " +
       who +
@@ -443,28 +765,52 @@ pub fn judgment_text(j : Judgment, indent : String) -> String {
       "规范值 : " +
       expected +
       "\n" +
-      indent +
-      "依据   : " +
-      wrap_note(basis, 68, cont) +
-      "\n"
+      source_text(src, indent, cont)
     }
-    Freedom(topic, note) =>
+    Unspecified(finding, labelled, gap, src) => {
+      let mut vals = ""
+      let mut i = 0
+      while i < labelled.length() {
+        if i > 0 {
+          vals = vals + ", "
+        }
+        vals = vals + labelled[i]
+        i = i + 1
+      }
+      indent +
+      "结论   : 无条款不一致（Verdict: UNSPECIFIED-DIVERGENCE）\n" +
+      indent +
+      "议题   : " +
+      finding.label() +
+      "\n" +
+      indent +
+      "分歧   : " +
+      wrap_note(vals, 64, cont) +
+      "\n" +
+      indent +
+      "缺口   : " +
+      wrap_note(gap, 64, cont) +
+      "\n" +
+      source_text(src, indent, cont)
+    }
+    Freedom(finding, note, src) =>
       indent +
       "结论   : 实现自由度，非缺陷（Verdict: IMPLEMENTATION-FREEDOM）\n" +
       indent +
       "议题   : " +
-      wrap_note(topic, 68, cont) +
+      finding.label() +
       "\n" +
+      source_text(src, indent, cont) +
       indent +
       "说明   : " +
-      wrap_note(note, 68, cont) +
+      wrap_note(note, 64, cont) +
       "\n"
     Undetermined(reason) =>
       indent +
       "结论   : 无法判定（Verdict: UNDETERMINED）\n" +
       indent +
       "原因   : " +
-      wrap_note(reason, 68, cont) +
+      wrap_note(reason, 64, cont) +
       "\n"
   }
 }
@@ -473,15 +819,9 @@ pub fn judgment_text(j : Judgment, indent : String) -> String {
 /// 裁定的一行式摘要，用于回归基线比对。
 pub fn judgment_tag(j : Judgment) -> String {
   match j {
-    Violation(_, _, _) => "SPEC-VIOLATION"
-    Freedom(topic, _) =>
-      if topic == "NaN 符号位" {
-        "FREEDOM:nan-sign"
-      } else if topic == "浮点格式化" {
-        "FREEDOM:float-format"
-      } else {
-        "FREEDOM:other"
-      }
+    Violation(f, _, _, _) => "SPEC-VIOLATION:" + f.slug()
+    Freedom(f, _, _) => "FREEDOM:" + f.slug()
+    Unspecified(f, _, _, _) => "UNSPECIFIED-DIVERGENCE:" + f.slug()
     Undetermined(_) => "UNDETERMINED"
   }
 }

@@ -9,6 +9,7 @@
 | **工具自举** | `bash scripts/selfcheck.sh` | `stats`/`matrix`/`shrink`/`gen` 在四个后端上输出**逐字节一致** |
 | **回归基线** | `bash scripts/regress.sh` | 11 项判定的标签与 `tests/expected.txt` 一致，只对新增差异报警 |
 | 探针矩阵 | `bash scripts/matrix.sh probe:<名字>` | 8 组固定边界探针的跨后端一致性 + 规范裁定 |
+| **收缩后复跑** | `bash scripts/shrink.sh <输入>` | 最小反例重跑后仍复现同一分歧（`verified: reproduce`） |
 | 常量折叠电池 | `moon run cmd/driver --target <t> -- literals` | 24 条编译期表达式的跨后端位模式 |
 
 后三层是「守则」的落地：自举证明工具自身可信，基线证明差异不被掩盖，
@@ -29,7 +30,7 @@ CI 的 *Four-backend coverage census* 单独断言（每个探针的矩阵必须
 ## 当前状态
 
 ```
-Total tests: 31, passed: 31, failed: 0
+Total tests: 50, passed: 50, failed: 0
 ```
 
 后端覆盖：本机 `wasm` / `wasm-gc` / `js`；`native` 由 CI（`ubuntu-latest`）覆盖，
@@ -40,15 +41,16 @@ CI 中显式断言 native 产出完整的 24 条折叠结果，避免「未运�
 四个后端**全部真实执行**，不是挑选后的结果：
 
 ```
-unit tests / wasm        Total tests: 31, passed: 31, failed: 0
-unit tests / wasm-gc     Total tests: 31, passed: 31, failed: 0
-unit tests / js          Total tests: 31, passed: 31, failed: 0
-unit tests / native      Total tests: 31, passed: 31, failed: 0
+unit tests / wasm        Total tests: 50, passed: 50, failed: 0
+unit tests / wasm-gc     Total tests: 50, passed: 50, failed: 0
+unit tests / js          Total tests: 50, passed: 50, failed: 0
+unit tests / native      Total tests: 50, passed: 50, failed: 0
 
 自检通过：stats / matrix / shrink / gen 在 wasm wasm-gc js native 上输出逐字节一致
 回归通过：11 项判定与基线一致（后端: wasm wasm-gc js）
 四后端覆盖普查通过：8 个探针均在 wasm / wasm-gc / js / native 上完成比较
 折叠电池：wasm 24 / wasm-gc 24 / js 24 / native 24
+收缩复跑：verified: reproduce（反例 NOT-REPRODUCED 被拒）
 ```
 
 > 顺带记录一个真实教训：CI 首次运行失败在 census 一步，日志只有「零输出 + 退出码 2」。
@@ -84,6 +86,37 @@ unit tests / native      Total tests: 31, passed: 31, failed: 0
   出处 `builtin/double.mbt:274-296`
 - 裁定文本同时含定位（`文件:行号`）与原文
 - `find_static_site` 能在程序深处（第 5 步）定位溢出点，也认得乘法溢出
+- 收缩后复跑：五项特征（后端集合、终止集合、分歧形态、分歧原语、两侧取值）
+  逐项有单测，任一项变化都被判成 `NOT-REPRODUCED` 并说明是哪一项
+- **转录截断不被算成取值分歧**：某后端 trap 后转录为空，朴素按行比对会报
+  「第 0 步取值不同」，实际那是长度差异，不是任何指令算出来的值
+- 步号重排不影响判定（收缩会删掉目标步之前的支线，步号必然变）
+
+## 收缩之后为什么还要复跑
+
+收缩的正确性是可以静态论证的：直线程序里删掉不参与分歧的指令，
+保留指令读到的值一个字节都不会变。但**论证不等于证据**——
+闭包漏一个前驱、直线假设哪天不成立，这句论证就变成没人能检查的承诺。
+
+所以 `scripts/shrink.sh` 在收缩后会真的再跑一次，比较两份现场：
+
+| 比较项 | 不等时说明什么 |
+| --- | --- |
+| 后端数量 | 复跑没交给同一批后端，验证本身失效 |
+| 终止集合 | 收缩改变了谁 trap，收缩不是语义空操作 |
+| 分歧形态 | 从「终止 + 取值分歧」退化成「只有终止」，或反过来 |
+| 分歧原语 | 分歧点漂移了，收缩删掉了不该删的指令 |
+| 两侧取值 | 同一条指令、同样操作数却算出不同值，说明输入被改动了 |
+
+末行固定输出 `verified: reproduce` 或 `NOT-REPRODUCED`，两者都是字面量，
+CI 用 `grep -q` 精确匹配。CI 里还跑一个反例：把目标步钉在 0，
+trap 会被收缩掉，此时必须判 `NOT-REPRODUCED` 并失败——
+没有这个反例，`verified` 本身也可能只是一句常量。
+
+这一步在开发时立刻抓到过一个真 bug：自动定位取的是「第一个静态候选」，
+而 `int-overflow` 里先有乘法溢出、后面才是除法终止，收缩到乘法那一步再跑，
+trap 就消失了。改成「取裁定所指的指令」后才复现。
+**验证机制的第一次运行就否证了它要验证的东西**，这正是它该有的样子。
 
 ## 语义口径（本项目显式定义的部分）
 

@@ -109,11 +109,20 @@ IEEE 754-2019 §6.2.3 不规定 NaN 的符号位：正 quiet NaN 与负 quiet Na
 
 ### 复现
 
+两条独立路径都能复现，互相印证：
+
 ```bash
+# 路径一：常量折叠电池（规格程序模式）
 for t in wasm wasm-gc js; do moon run cmd/driver --target $t -- literals | head -1; done
+
+# 路径二：源码探针（普通 MoonBit，不依赖本项目的任何包）
+bash scripts/source-probe.sh double-nan-literal
 ```
 
 24 条常量折叠探针里，**23 条三个后端一致，1 条（`L0 nan_div`）不同**。
+源码探针在 CI 的四后端上给出同一结论：`wasm` / `wasm-gc` / `native` 为
+`fff8000000000000`，`js` 为 `7ff8000000000000`。也就是说这条差异与后端数量无关，
+是 `js` 后端在折叠路径上的独立实现选择。
 这条计入回归基线，形如：
 
 ```

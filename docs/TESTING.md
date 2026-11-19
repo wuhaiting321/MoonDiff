@@ -10,6 +10,7 @@
 | **回归基线** | `bash scripts/regress.sh` | 11 项判定的标签与 `tests/expected.txt` 一致，只对新增差异报警 |
 | 探针矩阵 | `bash scripts/matrix.sh probe:<名字>` | 8 组固定边界探针的跨后端一致性 + 规范裁定 |
 | **收缩后复跑** | `bash scripts/shrink.sh <输入>` | 最小反例重跑后仍复现同一分歧（`verified: reproduce`） |
+| **覆盖边界** | `bash scripts/coverage.sh --check` | 接口触达清单逐条可核对，README 数字与现算结果逐字一致 |
 | 常量折叠电池 | `moon run cmd/driver --target <t> -- literals` | 24 条编译期表达式的跨后端位模式 |
 
 后三层是「守则」的落地：自举证明工具自身可信，基线证明差异不被掩盖，
@@ -117,6 +118,32 @@ trap 会被收缩掉，此时必须判 `NOT-REPRODUCED` 并失败——
 而 `int-overflow` 里先有乘法溢出、后面才是除法终止，收缩到乘法那一步再跑，
 trap 就消失了。改成「取裁定所指的指令」后才复现。
 **验证机制的第一次运行就否证了它要验证的东西**，这正是它该有的样子。
+
+## 覆盖率为什么不是手写的
+
+`README.md` 里那一行「接口触达：24 / 215 = 11.2%」是 `scripts/coverage.sh` 的输出，
+而且 `--check` 会把它跟现算结果逐字比对，不一致就退出 1。手写常量的路被堵死了。
+
+分母：被测类型的 `.mbti` 里 `pub fn` 的行数（`builtin` 只计
+`String`/`Double`/`Char`/`BytesView` 的方法）。
+分子：`probes/api-touch.txt` 的登记，逐条过四道校验：
+
+1. 接口确实在该包的 `.mbti` 里（不能编接口）；
+2. 符号名字确实出现在探针源码里（不能登记没调过的东西）；
+3. 用例名确实在 `probes -- list` 里（不能登记不存在的 case）；
+4. 符号出现在**这条用例自己的函数体**里（`via:` 时是其辅助函数体），
+   不能拿别的 case 的调用充数。
+
+三个负例都实测过，都能让脚本退出 1：
+
+| 负例 | 脚本报的错 |
+| --- | --- |
+| 编一个不存在的接口 `BigInt::frobnicate` | 不在 `.mbti` / 源码里没调用 / 不在函数体里（三连报） |
+| 把 `String::get_char` 登记到 `string-cjk` | 不在 `case_string_cjk` 的函数体里 |
+| 把 `String::length` 登记到 `string-nope` | 用例不存在 + 函数体对不上 |
+
+把 README 的百分比改一个数字，`--check` 同样退出 1 并打印两边的内容。
+<!-- 分隔：下面是口径说明，不属于上面的测试层 -->
 
 ## 语义口径（本项目显式定义的部分）
 

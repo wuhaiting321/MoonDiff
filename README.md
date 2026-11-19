@@ -166,9 +166,9 @@ MoonDiff 给出的是三样东西——差在哪、有没有条款管、条款�
   实现自由度都记在里面，CI 只对**新增**差异报警——既不反复刷屏，也不静默放过。
 - **自举自检**：`scripts/selfcheck.sh` 把工具自己送进矩阵，验证 `stats` / `matrix` /
   `shrink` / `gen` 在四个后端上输出逐字节一致。
-- **测试与文档**：40 个单元测试覆盖编码、编解码往返、解释器确定性、随机源确定性、
-  依赖闭包、四档裁定的边界与「空出处必须被拒」；`docs/` 下含架构、发现、
-  测试方法、原创性排查记录。
+- **测试与文档**：50 个单元测试覆盖编码、编解码往返、解释器确定性、随机源确定性、
+  依赖闭包、四档裁定的边界、收缩复跑的五项比较；`docs/` 下含架构、发现、
+  测试方法、覆盖边界、原创性排查记录。
 
 ## 是否为原创项目
 
@@ -220,6 +220,9 @@ bash scripts/source-probe.sh
 
 # 5. 收缩后复跑：最小反例必须真的还能复现同一个分歧
 bash scripts/shrink.sh examples/min-div-overflow.json
+
+# 6. 覆盖边界：接口触达率现算，并与 README 里的数字逐字核对
+bash scripts/coverage.sh --check
 ```
 
 `scripts/matrix.sh` 的输出包含三段：多后端矩阵（谁和谁不一样）、差异归因
@@ -285,6 +288,25 @@ fn case_bigint_mul() -> Unit {
 源码探针只报「不一致」，不做裁定；`SPEC-VIOLATION` / `UNSPECIFIED-DIVERGENCE` /
 `IMPLEMENTATION-FREEDOM` 这些判定由规格程序模式给出。已知的 `DIVERGENT` 在
 `tests/source-expected.txt` 里入册，裁定见 `docs/FINDINGS.md`。
+
+### 覆盖边界与接口触达
+
+这个工具能证伪，不能证明。所以覆盖范围必须写死到具体数字，而不是「覆盖率较高」：
+
+```
+接口触达：24 / 215 = 11.2%（30 个用例：bigint 10 / double 10 / string 9 / base64 1）
+```
+
+分母是被测类型（`BigInt` / `String` / `Double` / `Char` / `BytesView` 与四个编码包）
+在核心库 `pkg.generated.mbti` 里的**全部**具名方法，由 `bash scripts/coverage.sh`
+从 `.mbti` 现算；分子来自 `probes/api-touch.txt`，每一条都要过四道校验
+（接口存在于 `.mbti`、符号出现在探针源码、用例名存在、符号在该用例自己的函数体里），
+任何一条不成立脚本直接退出 1，不给数字。`bash scripts/coverage.sh --check`
+会核对上面这一行与本地算出来的是否逐字一致。
+
+剩下 191 个未被触达的方法，**不保证任何东西**。为什么不把数字做大、为什么不覆盖
+控制流、并发、内存布局、Float16、泛型，逐条写在 `docs/SCOPE.md` 里，
+每条都指向代码里的一个真实限制。
 
 ## 已观测到的真实差异与裁定
 

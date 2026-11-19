@@ -1,0 +1,60 @@
+# 探针触达的具名接口清单（供 scripts/coverage.sh 计算覆盖率）
+#
+# 格式：包|符号|用例
+#   - 符号必须能在该包的 pkg.generated.mbti 里找到 `pub fn <符号>(`
+#   - 用例必须是 probes 包实际存在的 case 名
+# 两条都由脚本校验，写错任何一条脚本都会失败退出——清单不能被"顺手多写"。
+#
+# 不登记运算符（* / % + - << >> 等）：它们由 `pub impl` 提供，调用点写作运算符，
+# 源码里没有符号名，无法静态判定触达，因此分子分母都不含运算符重载。
+# 这是少算，不是多算：真正被测的行为比这张表多。
+#
+# builtin 是隐式导入的类型（String / Double / Char / BytesView），
+# 其接口在 $CORE/builtin/pkg.generated.mbti。
+
+# --- 大整数：两套宿主实现（bigint_js / bigint_default），数学结果是唯一标准 ---
+bigint|BigInt::from_string|bigint-mul
+bigint|BigInt::from_string|bigint-add-sub
+bigint|BigInt::from_string|bigint-radix
+bigint|BigInt::from_int|bigint-pow
+bigint|BigInt::pow|bigint-pow
+bigint|BigInt::pow|bigint-pow-mod
+bigint|BigInt::to_string|bigint-radix
+bigint|BigInt::shl|bigint-shift
+bigint|BigInt::shr|bigint-shift
+bigint|BigInt::bit_length|bigint-bits
+bigint|BigInt::ctz|bigint-bits
+bigint|BigInt::to_octets|bigint-octets
+
+# --- 文本：长度单位与码点（String::length 是码元数，to_array 是码点）---
+builtin|String::length|string-length
+builtin|String::to_array|string-length
+# emoji / cjk 两个 case 经 hex_units 渲染，to_array 在辅助函数里调用，用 via: 标明
+builtin|String::to_array|string-emoji|via:hex_units
+builtin|String::to_array|string-cjk|via:hex_units
+builtin|String::get_char|string-char-at
+builtin|String::compare|string-compare
+builtin|Char::to_int|string-char-at
+
+# --- 浮点：位模式、格式化、舍入、饱和转换 ---
+builtin|Double::to_string|double-fmt-big
+builtin|Double::to_string|double-fmt-small
+builtin|Double::to_string|double-round-trip
+builtin|Double::round|double-rounding
+builtin|Double::to_int|double-to-int
+builtin|Double::reinterpret_as_int64|double-thirds
+builtin|Double::reinterpret_as_int64|double-round-trip
+builtin|Double::reinterpret_as_int64|double-subnormal
+builtin|Double::reinterpret_as_int64|double-overflow
+builtin|Double::reinterpret_as_int64|double-nan-literal
+builtin|Double::reinterpret_as_int64|double-nan-runtime
+
+# --- 编码：往返必须逐字节可逆 ---
+encoding/utf8|encode|string-utf8
+encoding/utf8|encode|string-utf8-round-trip
+encoding/utf8|decode_lossy|string-utf8-round-trip
+encoding/hex|encode|bigint-octets
+encoding/hex|encode|string-utf8
+encoding/base64|encode|base64-round-trip
+encoding/base64|decode_lossy|base64-round-trip
+encoding/ascii|encode|string-ascii-round-trip

@@ -140,7 +140,7 @@ for pkg in $PKGS; do
 done
 tot_pct=$(awk -v a="$tot_hit" -v b="$tot_den" 'BEGIN{ printf "%.1f", 100*a/b }')
 
-n_lines=$(grep -vc '^\s*\(#\|$\)' "$MANIFEST")
+n_lines=$(grep -vcE '^[[:space:]]*(#|$)' "$MANIFEST")
 n_syms=$(cut -d'|' -f1,2 "$tmp" | sort -u | wc -l | tr -d ' ')
 n_cases=$(printf '%s\n' "$CASES" | wc -l | tr -d ' ')
 c_bigint=$(printf '%s\n' "$CASES" | grep -c '^bigint-')
@@ -148,25 +148,43 @@ c_double=$(printf '%s\n' "$CASES" | grep -c '^double-')
 c_string=$(printf '%s\n' "$CASES" | grep -c '^string-')
 c_base64=$(printf '%s\n' "$CASES" | grep -c '^base64-')
 
+# 核心库版本：分母是「这个版本的 .mbti」的函数，版本不写进结论里就是耍流氓。
+CORE_VER=$(grep -m1 '^version' "$CORE/moon.mod" 2>/dev/null | sed 's/.*"\(.*\)".*/\1/')
+CORE_VER=${CORE_VER:-unknown}
+
 # README 里必须逐字出现的那一行。--check 拿它跟实际算出来的比。
-README_LINE="接口触达：$tot_hit / $tot_den = $tot_pct%（$n_cases 个用例：bigint $c_bigint / double $c_double / string $c_string / base64 $c_base64）"
+README_LINE="接口触达：$tot_hit / $tot_den = $tot_pct%（核心库 $CORE_VER；$n_cases 个用例：bigint $c_bigint / double $c_double / string $c_string / base64 $c_base64）"
 
 if [ "$QUIET" -eq 2 ]; then
   # --check：README 的数字必须与脚本算出来的一致，否则失败。
+  # 但分母是**核心库版本的函数**——换版本时接口会增删，硬要求分子分母全等，
+  # 等于要求所有人装同一个核心库版本。所以分两种情况：
+  #   版本相同：逐字全等，否则失败（防手写常量）；
+  #   版本不同：分子与用例数仍须全等，分母与百分比按本地重算后如实打印。
   if [ ! -f README.md ]; then
     echo "错误：找不到 README.md" >&2
     exit 2
   fi
   actual=$(grep -m1 '^接口触达：' README.md || true)
-  if [ "$actual" != "$README_LINE" ]; then
-    echo "README 与脚本输出不一致：" >&2
-    echo "  脚本  : $README_LINE" >&2
-    echo "  README: ${actual:-（没有以「接口触达：」开头的行）}" >&2
-    echo "先跑 bash scripts/coverage.sh，再把那一行原样贴进 README。" >&2
-    exit 1
+  if [ "$actual" = "$README_LINE" ]; then
+    echo "README 与脚本一致：$README_LINE"
+    exit 0
   fi
-  echo "README 与脚本一致：$README_LINE"
-  exit 0
+  r_hit=$(printf '%s' "$actual" | sed -n 's/^接口触达：\([0-9]\+\) \/.*/\1/p')
+  r_cases=$(printf '%s' "$actual" | sed -n 's/^.*；\([0-9]\+\) 个用例.*/\1/p')
+  r_ver=$(printf '%s' "$actual" | sed -n 's/^.*核心库 \([^；]*\)；.*/\1/p')
+  if [ -n "$r_hit" ] && [ "$r_hit" = "$tot_hit" ] && [ "$r_cases" = "$n_cases" ]; then
+    echo "核心库版本不同：README 记录的是 $r_ver，本机是 $CORE_VER。"
+    echo "  分子（$tot_hit 个接口）与用例数（$n_cases）一致；分母按本机重算："
+    echo "  $README_LINE"
+    echo "  百分比只在同一核心库版本下可比。要更新记录，跑 bash scripts/coverage.sh 后整行替换。"
+    exit 0
+  fi
+  echo "README 与脚本输出不一致：" >&2
+  echo "  脚本  : $README_LINE" >&2
+  echo "  README: ${actual:-（没有以「接口触达：」开头的行）}" >&2
+  echo "先跑 bash scripts/coverage.sh，再把那一行原样贴进 README。" >&2
+  exit 1
 fi
 
 if [ "$QUIET" -eq 0 ]; then

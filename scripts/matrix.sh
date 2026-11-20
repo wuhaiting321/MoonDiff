@@ -61,7 +61,7 @@ fi
 
 echo "== MoonDiff =="
 echo "输入   : $LABEL"
-echo "指令数 : $(printf '%s' "$PROG" | grep -o '\[' | wc -l)"
+echo "指令数 : $(printf '%s' "$PROG" | grep -o '\["' | wc -l)"
 echo
 
 AVAILABLE=()

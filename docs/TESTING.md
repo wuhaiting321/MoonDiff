@@ -11,6 +11,8 @@
 | 探针矩阵 | `bash scripts/matrix.sh probe:<名字>` | 8 组固定边界探针的跨后端一致性 + 规范裁定 |
 | **收缩后复跑** | `bash scripts/shrink.sh <输入>` | 最小反例重跑后仍复现同一分歧（`verified: reproduce`） |
 | **覆盖边界** | `bash scripts/coverage.sh --check` | 接口触达清单逐条可核对，README 数字与现算结果逐字一致 |
+| **源码探针** | `bash scripts/source-probe.sh --check` | 30 个普通 MoonBit 探针在四后端逐字节一致，基线不漂移 |
+| 案例文档 | `docs/CASES.md` 里每条的复现命令 | 文档里贴的输出与命令都实跑过，跑不出来即文档错误 |
 | 常量折叠电池 | `moon run cmd/driver --target <t> -- literals` | 24 条编译期表达式的跨后端位模式 |
 
 后三层是「守则」的落地：自举证明工具自身可信，基线证明差异不被掩盖，

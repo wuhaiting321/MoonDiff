@@ -68,7 +68,7 @@ bash scripts/source-probe.sh bigint-mul
 
 **对象**：`Int` 的整数除法，`moonbitlang/core` 的 `Div for Int32`。
 
-**输入**：规格程序，3 条指令：
+**输入**：规格程序，3 条指令（伪代码渲染，实际是 `examples/min-div-overflow.json` 里的单行 JSON）：
 
 ```
 iset r0 -2147483648      # INT_MIN
@@ -136,12 +136,17 @@ bash scripts/shrink.sh examples/min-div-overflow.json    # 收缩并复跑，输
 
 **对象**：`Double` 的 `0.0 / 0.0` 在**编译期常量折叠**路径上的结果。
 
-**输入**：
+**输入**（探针源码原文，`probes/cases_double.mbt`）：
 
 ```moonbit
-let x = (0.0 / 0.0).reinterpret_as_int64()
-println(x.to_hex())     // 位模式，不是文本
+fn case_double_nan_literal() -> Unit {
+  emit("double-nan-literal", hex16((0.0 / 0.0).reinterpret_as_int64()))
+}
 ```
+
+`0.0 / 0.0` 是编译期常量，会被常量折叠成一个固定的 NaN；`reinterpret_as_int64`
+拿到它的位模式，`hex16` 渲染成 16 位十六进制。**比的是位模式，不是文本**——
+文本形式的 `NaN` 在四个后端上完全一样，看不出任何差异。
 
 **原始输出**（`for t in wasm wasm-gc js; do moon run probes --target $t -- double-nan-literal; done`）：
 
@@ -204,10 +209,15 @@ string-length = 4 3
 - `s.length()` → **4**（UTF-16 码元数；😀 占两个码元）
 - `s.to_array().length()` → **3**（码点数）
 
-而 `s[1:3]` 这种切片**按码点**索引。三个口径混在同一个类型上，四个后端行为完全一致。
+还没完：切片 `s[1:3]` 是**按码元**索引的。在 `"a😀中b"` 上执行它，
+实测打印 `[1] 128512`——1 个字符、码点 `0x1F600`，也就是只取到了 😀，
+而不是「😀中」。三个口径里**两个按码元、一个按码点**，混用就会切到半个代理对。
 
-**这不是 bug，是 API 设计陷阱**，因此不进四档的任何一档——本工具也判不了它，
-因为规范没有规定「长度必须只有一个口径」。
+关键在于：这类错误在四个后端上表现**完全一致**，`moon test` 不会报，
+本工具也判不了它——它只能说明「四个后端算的是同一个东西」。
+
+**这不是 bug，是 API 设计陷阱**，因此不进四档的任何一档：
+规范没有规定「长度必须只有一个口径」，没有条款可以对照，也就谈不上谁违反。
 
 它被记下来的理由，恰好是要说清这个工具的边界：**一致不等于正确**。
 MoonDiff 只能回答「四个后端算的是不是同一个东西」，回答不了「这个东西是不是你想要的」。
@@ -218,7 +228,9 @@ MoonDiff 只能回答「四个后端算的是不是同一个东西」，回答�
 ```bash
 # 三个后端各打印一行，应当都是 4 3
 for t in wasm wasm-gc js; do moon run probes --target $t -- string-length; done
-# 矩阵里这一行应当是 PASS（三个后端一致）
+# 切片按码元的实证：对 "a😀中b" 打印 [1] 128512（只取到 😀 一个字符）
+for t in wasm wasm-gc js; do moon run probes --target $t -- string-substring; done
+# 矩阵里这两行都应当是 PASS（三个后端一致）
 bash scripts/source-probe.sh string-length
 ```
 

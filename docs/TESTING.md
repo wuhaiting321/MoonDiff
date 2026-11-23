@@ -39,15 +39,15 @@ Total tests: 62, passed: 62, failed: 0
 后端覆盖：本机 `wasm` / `wasm-gc` / `js`；`native` 由 CI（`ubuntu-latest`）覆盖，
 CI 中显式断言 native 产出完整的 24 条折叠结果，避免「未运行也算通过」。
 
-### CI 实测结果（2026-11-13，run #2）
+### CI 实测结果（2026-11-23，run #18，提交 fb2ac03）
 
 四个后端**全部真实执行**，不是挑选后的结果：
 
 ```
-unit tests / wasm        Total tests: 50, passed: 50, failed: 0
-unit tests / wasm-gc     Total tests: 50, passed: 50, failed: 0
-unit tests / js          Total tests: 50, passed: 50, failed: 0
-unit tests / native      Total tests: 50, passed: 50, failed: 0
+unit tests / wasm        check + build + test  62 tests, 62 passed
+unit tests / wasm-gc     check + build + test  62 tests, 62 passed
+unit tests / js          check + build + test  62 tests, 62 passed
+unit tests / native      check + build + test  62 tests, 62 passed
 
 自检通过：stats / matrix / shrink / gen 在 wasm wasm-gc js native 上输出逐字节一致
 回归通过：11 项判定与基线一致（后端: wasm wasm-gc js）

@@ -33,7 +33,7 @@ CI 的 *Four-backend coverage census* 单独断言（每个探针的矩阵必须
 ## 当前状态
 
 ```
-Total tests: 50, passed: 50, failed: 0
+Total tests: 62, passed: 62, failed: 0
 ```
 
 后端覆盖：本机 `wasm` / `wasm-gc` / `js`；`native` 由 CI（`ubuntu-latest`）覆盖，

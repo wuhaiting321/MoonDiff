@@ -140,8 +140,8 @@ MoonDiff 给出三样东西：差在哪、有没有条款管、条款原文是�
   在四个后端上输出逐字节一致。
 - **编排脚本**：`matrix.sh` 探测可用后端并汇总矩阵、`shrink.sh` 收缩并复跑、
   `source-probe.sh` 跑源码探针、`coverage.sh` 现算接口触达、`localize.py` 二分崩溃点。
-- **测试与文档**：50 个单元测试覆盖编码、编解码往返、解释器确定性、随机源确定性、
-  依赖闭包、四档裁定边界与收缩复跑的五项比较。
+- **测试与文档**：62 个单元测试覆盖编码、编解码往返、解释器确定性、随机源确定性、
+  依赖闭包、四档裁定边界、收缩复跑的五项比较，以及矩阵/归因/判定三处报告的渲染负例。
 
 ## 具体案例
 
@@ -229,23 +229,62 @@ Float16 与 SIMD、泛型与宏。每一条都指向代码里的一个真实限�
 
 上述项目均未被复制或改写；如后续需要引用其测试语料，将在对应文件中标注来源与许可证。
 
-## 验证方式
+## 安装与运行
 
-**环境**：MoonBit CLI（实测 `moon 0.1.20261020`、`moonc 0.10.16`）、Node.js（`js` 后端）、
-C 编译器（`native` 后端：Windows 需 MSVC Build Tools，Linux/macOS 用 gcc）。
-某个后端缺工具链时，矩阵会把它标为 `unavailable` 并继续跑其余后端，不会中断。
-不需要网络，也不需要任何第三方包。
+**环境**：MoonBit CLI（`moonc` ≥ 0.10.16；实测 `moon 0.1.20261020`、`moonc 0.10.16+b1a0e846e`）、
+Node.js（`js` 后端）、C 编译器（`native` 后端：Windows 需 MSVC Build Tools，Linux/macOS 用 gcc）。
+缺工具链的后端标 `unavailable` 并跳过，不中断；除标准库外无依赖，也不需要网络。
 
 ```bash
-moon test && bash scripts/selfcheck.sh                 # 单元测试 + 工具自举
-bash scripts/matrix.sh examples/min-div-overflow.json  # 矩阵 → 归因 → 裁定
-bash scripts/source-probe.sh                           # 真实库探针，四后端逐字节比对
+git clone https://github.com/wuhaiting321/MoonDiff && cd MoonDiff
+moon check && moon test                # 类型检查 + 单元测试（四后端）
+bash scripts/selfcheck.sh              # 工具自举：同一份报告在各后端逐字节一致
+bash scripts/matrix.sh examples/min-div-overflow.json   # 矩阵 → 归因 → 裁定
+bash scripts/source-probe.sh           # 真实库探针，四后端逐字节比对
 ```
 
-三条命令分别对应三件事：**工具自身可信**（同一份报告在各后端逐字节一致）、
-**机制跑得通**（执行 → 矩阵 → 归因 → 裁定一条链）、**真实库用得上**（普通 MoonBit 源码即可接入）。
+作为依赖引入：`moon add wuhaiting321/moondiff`（已发布到 mooncakes.io），导入
+`wuhaiting321/moondiff/src/oracle` 等包；包划分与数据流见 `docs/ARCHITECTURE.md`。
 
-其余脚本——收缩后复跑 `shrink.sh`、覆盖核对 `coverage.sh --check`、回归基线 `regress.sh`、
-常量折叠电池、生成与统计——以及每个脚本断言的具体内容，见 **`docs/TESTING.md`**。
-`matrix.sh` 的输出分三段：多后端矩阵（谁和谁不一样）、差异归因（第几步、哪条原语、
-哪个字符不同）、规范裁定（依据哪一句）；最后一段是 `docs/FINDINGS.md` 里每条结论的来源。
+### 最小示例：一条命令，三段输出
+
+```bash
+bash scripts/matrix.sh examples/min-div-overflow.json
+```
+
+```text
+== MoonDiff ==
+输入   : examples/min-div-overflow.json
+指令数 : 3
+
+  ...（为省篇幅略去 13 行：后端探测进度 4 行、退出码提示 2 行、矩阵表头统计 3 行、
+      裁定「缺口」说明 4 行；原文见 docs/CASES.md）
+
++--------------+----------+--------+--------------------+
+| backend      | status   | step   | note               |
++--------------+----------+--------+--------------------+
+| wasm         | ABORT    | ?      | 无结束哨兵：trap/abort，转录可能被丢弃 |
+| wasm-gc      | ABORT    | ?      | 无结束哨兵：trap/abort，转录可能被丢弃 |
+| js           | PASS     | -      | baseline           |
++--------------+----------+--------+--------------------+
+
+裁定
+  结论   : 无条款不一致（Verdict: UNSPECIFIED-DIVERGENCE）
+  议题   : 整数除法/取模的商（余数）不可表示：min_value / -1
+  分歧   : wasm=ABORT, wasm-gc=ABORT, js=i-2147483648
+  依据   : builtin/intrinsics.mbt:298-309
+  原文   : "Throws a panic if `divisor` is zero."
+```
+
+本机没有 MSVC，`native` 标为 `unavailable` 所以只有 3 列；CI 的 Linux runner 上四列齐全，
+那次运行的输出在 `docs/CASES.md`。上面的文字是这段命令的实跑结果，只删行不改字。
+
+矩阵说谁和谁不一样，归因说第几步哪条原语，裁定说依据哪一句。收缩复跑 `shrink.sh`、
+覆盖核对 `coverage.sh --check`、回归基线 `regress.sh`、常量折叠电池、生成与统计，
+以及每个脚本断言的具体内容，见 **`docs/TESTING.md`**。
+
+## 许可证
+
+**Apache-2.0**（OSI 认可），全文见 `LICENSE`，`moon.mod` 中 `license = "Apache-2.0"`。
+仓库不含任何第三方源代码，未移植或改写任何项目，因此不产生他方许可证义务；
+如后续引用其它项目的测试语料，会在对应文件标注来源与许可证。

@@ -41,6 +41,11 @@ jobs:
       - name: Type check
         run: moon check
 
+      # 检查 / 构建 / 测试是三条独立的证据：moon check 只证明类型过得去，
+      # 链接阶段的失败（缺符号、目标不支持的调用）只有 build 会暴露。
+      - name: Build
+        run: moon build --target ${{ matrix.target }}
+
       - name: Unit tests
         run: moon test --target ${{ matrix.target }}
 
